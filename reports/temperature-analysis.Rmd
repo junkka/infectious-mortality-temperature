@@ -1,0 +1,1502 @@
+---
+title: "Analysis"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+
+
+
+```{r}
+library(splines)
+library(dlnm)
+library(zoo)
+library(lubridate)
+library(flextable)
+library(broom)
+library(tidyverse)
+library(rcustom)
+
+theme_set(theme_light())
+```
+
+
+```{r}
+harno <- read_delim("../data-raw/smhi-opendata_1_127380_20210823_173023.csv", delim = ";", skip = 9) %>% 
+  set_names(c("date", "time", "temperature", "quality", "n1", "n2")) %>% 
+  select(date, time, temperature, quality)
+
+
+
+```
+
+```{r}
+
+harno %>%
+  # slice(1:10) %>% 
+  filter(date < "1893-01-01") %>% 
+  count(time)
+```
+
+```{r}
+harno %>% 
+  filter(date < "1893-01-01") %>% 
+  group_by(date) %>% 
+  filter(n() < 3)
+  
+```
+
+```{r}
+harno %>% 
+  filter(date < "1893-01-01") %>% 
+  count(date, time) %>% 
+  count(n, name = "nn")
+```
+
+
+```{r}
+# interpolate missing
+# na.spline
+
+f <- function(d){
+  x <- zoo(d$temperature, d$idx)
+  na.spline(x, na.rm = F)
+}
+
+h0 <- harno %>% 
+  filter(date < "1893-01-01") %>% 
+  # filter(date < "1869-11-01", date > "1869-10-15") %>% 
+  # slice(1:100) %>% 
+  mutate(
+    idx = as.integer(date)
+  ) %>% 
+  complete( time, idx, fill = list(temperature = NA)) %>% 
+  group_by(time) %>% 
+  nest() %>% 
+  mutate(
+    d2 = map(data, f),
+    app = map(d2, as.vector)
+  ) %>% 
+  unnest(cols = c(data, app)) %>% 
+  arrange(date, time) %>% 
+  mutate(date= as.Date(idx)) 
+
+h0 %>% filter(is.na(temperature))
+```
+
+
+```{r, fig.width=8, fig.height=4}
+h0 %>%
+  # slice(1:10) %>% 
+  filter(date < "1893-01-01") %>% 
+  mutate(
+    dt = lubridate::ymd_hms(paste(date, time)),
+  ) %>% 
+  group_by(time) %>% 
+  mutate(
+    temp2 = zoo::rollmean(app, 7, fill = NA, align = "center")
+  ) %>% 
+  ungroup() %>% 
+  ggplot(aes(dt, app)) + 
+  geom_line(size = .2) +
+  geom_smooth(method = lm, se = F) + 
+  labs(x = "Time", y = "Temperature") 
+
+ggsave("../figures/temperature-time.png", height = 4, width = 8)
+```
+
+```{r}
+brks <- h0 %>% 
+  # slice(1:10) %>% 
+  filter(date < "1893-01-01") %>% 
+  mutate(
+    dt = lubridate::ymd_hms(paste(date, time)),
+    yd = yday(dt),
+    month = month(dt, label = T)
+  ) %>% 
+  group_by(month) %>% 
+  summarise(start_day = min(yd))
+
+h0 %>%
+  # slice(1:10) %>% 
+  filter(date < "1893-01-01") %>% 
+  mutate(
+    dt = lubridate::ymd_hms(paste(date, time)),
+    yd = yday(dt)
+  ) %>% 
+  group_by(yd) %>% 
+  summarise(
+    temp = mean(app)
+  ) %>% ungroup() %>% 
+  ggplot(aes(yd, temp)) + 
+  geom_hline(yintercept = 0, size = .2) +
+  geom_line() +
+  scale_x_continuous(breaks = brks$start_day, labels = brks$month) +
+  # geom_smooth(method = lm, se = F) + 
+  labs(x = "Time", y = "Temperature") + 
+  theme_classic()
+
+ggsave("../figures/month_temp.png", height = 4, width = 6)
+
+```
+
+```{r}
+
+h0 %>%
+  # slice(1:10) %>% 
+  filter(date < "1893-01-01") %>% 
+  mutate(
+    dt = lubridate::ymd_hms(paste(date, time)),
+    yd = yday(dt)
+  ) %>% 
+  group_by(yd) %>% 
+  summarise(
+    temp = mean(app)
+  ) %>% ungroup() %>% 
+  mutate(newtemp = temp - (temp*2)) %>% 
+  ggplot(aes(yd, temp)) + 
+  geom_hline(yintercept = 0, size = .2) +
+  geom_line() +
+  scale_x_continuous(breaks = brks$start_day, labels = brks$month) +
+  scale_y_continuous(breaks = c(-10, -5,0,5,10,15), limits = c(-15,18)) +
+  coord_polar(theta = "x") +
+  # geom_smooth(method = lm, se = F) + 
+  labs(x = "Time", y = "Temperature")
+  # theme_classic()
+
+ggsave("../figures/month_temp_polar.png", height = 5, width = 5)
+
+```
+
+
+
+```{r}
+
+rol_avg <- function(x, k, a = "right") zoo::rollmean(x, k = k, fill = NA, align = a)
+
+h1 <- h0 %>% 
+  group_by(date) %>% 
+  summarise(
+    temp = mean(app, na.rm = T)
+
+  ) %>% 
+  ungroup() %>% 
+  arrange(date) %>% 
+  mutate(
+    y = year(date),
+    d1 = lubridate::decimal_date(date),
+    yday = yday(date),
+    temp1 = lag(temp, 1),
+    temp2 = lag(temp, 2),
+    temp3 = lag(temp, 3),
+    temp4 = lag(temp, 4),
+    temp5 = lag(temp, 5),
+    temp6 = lag(temp, 6),
+    temp7 = lag(temp, 7),
+    temp8 = lag(temp, 8),
+    temp9 = lag(temp, 9),
+    temp10 = lag(temp, 10),
+    temp11 = lag(temp, 11),
+    temp12 = lag(temp, 12),
+    temp13 = lag(temp, 13),
+    temp14 = lag(temp, 14),
+    lag_temp = rol_avg(temp1, 7)
+  ) 
+
+
+
+```
+
+
+```{r}
+
+fit <- lm(temp~ns(yday, 12) + y, data = h1); summary(fit)
+
+ggplot(h1 %>% filter(date >= "1868-01-15", date < "1893-01-01"), aes(date, temp)) + geom_line() + 
+  geom_smooth(method = lm, se = F) +
+  theme_light() + 
+  labs(x = "Time", y = "Temperature") 
+
+
+```
+
+```{r}
+h2 <- h1 %>% filter(date >= "1868-01-15", date < "1893-01-01") %>% 
+  mutate(
+    month = month(date),
+    month_name = month(date, label = T)
+    # season = ifelse(month %in% c(11,12,1,2,3,))
+  ) 
+
+h2 %>% 
+  group_by(month_name) %>% 
+  summarise(
+    median = median(temp),
+    mean   = mean(temp),
+    q25    = quantile(temp, .25),
+    q75    = quantile(temp, .75)
+  ) %>% mutate(across(median:q75, ~round(., 1))) %>% 
+  flextable()
+```
+
+```{r}
+
+h2 <- h1 %>% filter(date >= "1868-01-15", date < "1893-01-01") %>% 
+  mutate(
+    month = month(date),
+    month_name = month(date, label = T),
+    long_season = ifelse(month %in% c(11,12,1,2,3,4), "Cold\n(Nov-Apr)", "Warm\n(May-Oct)"),
+    season = case_when(
+      month %in% c(12,1,2)~"Winter",
+      month %in% 3:5~"Spring",
+      month %in% 6:8~"Summer",
+      month %in% 9:11~"Autumn"
+    )
+  ) 
+
+h2 %>% 
+  group_by(long_season) %>% 
+  summarise(
+    median = median(temp),
+    mean   = mean(temp),
+    q25    = quantile(temp, .25),
+    q75    = quantile(temp, .75),
+    min    = min(temp),
+    max    = max(temp)
+  ) %>% mutate(across(median:max, ~round(., 1))) %>% 
+  flextable() %>% 
+  autofit()
+```
+
+```{r}
+# Average monthly minimum by year
+
+h2 %>% 
+  group_by(y, month_name) %>% 
+  summarise(t = min(temp), t2 = max(temp), .groups = "drop") %>% 
+  group_by(month_name) %>% 
+  summarise(mean = mean(t), median = median(t), max_mean = mean(t2), max_median = median(t2)) %>% 
+  mutate(across(mean:max_median, ~round(., 1))) %>% 
+  flextable()
+
+```
+
+
+```{r}
+
+
+h2 %>% 
+  group_by(season) %>% 
+  summarise(
+    median = median(temp),
+    mean   = mean(temp),
+    q25    = quantile(temp, .25),
+    q75    = quantile(temp, .75),
+    min    = min(temp),
+    max    = max(temp)
+  ) %>% mutate(across(median:max, ~round(., 1))) %>% 
+  flextable() %>% 
+  autofit()
+```
+
+
+```{r}
+
+aug <-augment(fit) %>% 
+  mutate(date = h1$date)
+
+ggplot(aug %>% filter(y < 1900, y > 1870), aes(date, .std.resid)) + geom_line()
+
+```
+
+```{r}
+
+aug %>% 
+  mutate(
+    yday = h1$yday, 
+    datee = h1$date
+    
+  ) %>% 
+  select(temp, yday,y:.std.resid)
+```
+
+```{r}
+#' Load day case data
+
+load("../data/temp_case_data.rda")
+d3 <- temp_case_data
+```
+
+
+# Data
+
+
+```{r}
+load("../data/case_dat.rda")
+s1 <- case_dat %>% 
+  summarise(
+    temp_g = "N",
+    births = n(),
+    dead =   sum(event),
+    water =  sum(water, na.rm = T),
+    air  =   sum(air, na.rm = T)
+  )
+s2 <- s1 %>% 
+  mutate(
+    temp_g = "Rate",
+    dead = (dead/births)*1000,
+    water = (water/births)*1000,
+    air  = (air/births)*1000
+  ) %>% 
+  bind_rows(s1) 
+  
+
+d3 %>% 
+  mutate(
+    temp_g = cut(
+      temp, 
+      quantile(temp, prob = c(0,.1,.25,.5,.75,.9,1)), 
+      labels = c("0-10th", "10-25", "25-50", "50-75", "75-90", "90-100"),
+      include.lowest = T
+    )
+  ) %>% 
+  group_by(temp_g) %>% 
+  summarise(
+    births = sum(pop)/365,
+    dead =   sum(dead),
+    water =  sum(water, na.rm = T),
+    air  =   sum(air, na.rm = T),
+    temperature = paste(round(min(temp), 1), round(max(temp),1), sep= " - ")
+  ) %>% 
+   mutate(
+    
+    dead = (dead/births)*1000,
+    water = (water/births)*1000,
+    air  = (air/births)*1000
+  ) %>% 
+  bind_rows(s2) %>% 
+  mutate_if(is.numeric, round, 2) %>% 
+  set_names(c(" ", "Births", "Mortality", "Waterborne", "Airborne", "Temperature")) %>% 
+  flextable() %>% 
+  autofit()
+```
+
+
+```{r}
+p_length <- 60
+
+a1 <- d3 %>% 
+  mutate(
+    a_pop  = zoo::rollmean(pop, p_length, align = "right", fill = NA),
+    a_dead = zoo::rollmean(dead, p_length, align = "right", fill = NA),
+    a_air  = zoo::rollmean(air, p_length, align = "right", fill = NA),
+    a_water = zoo::rollmean(water, p_length, align = "right", fill = NA)
+  ) %>% 
+  filter(!is.na(a_pop)) %>% 
+  mutate(
+    a_rate = (a_dead/a_pop)*1000,
+    w_rate = (a_water/a_pop)*1000,
+    ai_rate = (a_air/a_pop)*1000,
+    winter = ifelse(dy < 91-30 | dy > 334-30, 0, 1),
+    month = month(datee)
+  )
+
+ggplot(a1, aes(datee, a_rate)) + 
+  geom_hline(yintercept = 0) +
+  geom_line() +
+  labs(x = "Time", y = "Rate")
+```
+
+
+```{r}
+a1 %>% 
+  group_by(month) %>% summarise(b = sum(pop), d = sum(dead)) %>% 
+  mutate(r = (d/(b/30))*1000)
+```
+
+
+```{r}
+
+```
+
+
+
+```{r}
+
+dit0 <- glm(dead~ns(temp, df = 3)+ns(dy, df = 6) + y + offset(log(pop)), data = d3 , 
+            family = "poisson")
+
+summary(dit0)
+```
+```{r}
+new_d = tibble(
+  y = median(1880),
+  temp = -32:27,
+  dy = 150,
+  pop = median(d3$pop)
+)
+
+
+
+new_d$pr <- predict(dit0, newdata = new_d, type = "response")
+
+
+ggplot(new_d, aes(temp, pr)) + geom_line() 
+
+```
+
+
+```{r}
+pois_low <- function(d, p){
+  lambda <- d/p
+  alpha <- -qnorm(.05/2)
+  lambda - (alpha* sqrt(lambda/p))
+}
+
+pois_high <- function(d, p){
+  
+  lambda <- d/p
+  alpha <- -qnorm(.05/2)
+  lambda + (alpha* sqrt(lambda/p))
+}
+
+t0 <- d3 %>% 
+  filter(!is.na(lag_temp)) %>% 
+  mutate(
+    t_g = cut(
+      lag_temp, 
+      breaks = quantile(lag_temp, prob = c(0,.1,.25,.5,.75,.9,1)), 
+      labels = c("-26-2 - -7.2 °C", "-7.2 - -2.5 °C", "-2.5 - 3.5 °C", "3.5 - 11.9 °C", "11.9 - 15.3 °C", "15.3 - 20.8 °C"),
+      include.lowest = T
+    )
+  ) %>% 
+  group_by(t_g) %>% 
+  summarise(
+    n = n(),
+    pop = sum(pop),
+    dead = sum(dead),
+    t1 = mean(lag_temp),
+    t_min = min(lag_temp),
+    t_max = max(lag_temp)
+  ) %>% 
+  mutate(
+    ci_l = pois_low(dead, pop)*1000*365,
+    ci_h = pois_high(dead, pop)*1000*365,
+    r = (dead/pop)*1000*365
+  ) #%>% 
+ggplot(t0, aes(t1, r)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = ci_l, ymax = ci_h), width = 0) +
+  geom_hline(yintercept = 0) +
+  scale_x_continuous(breaks = t0$t1, labels = c("-26-2 - -7.2 °C", "-7.2 - -2.5 °C", "-2.5 - 3.5 °C", "3.5 - 11.9 °C", "11.9 - 15.3 °C", "15.3 - 20.8 °C")) + 
+  labs(x = "Temperature", y = "IMR", title = "IMR by temperature percentiles", subtitle = "Percentiles: 0-10th, 10-25th, 25-50th, 50-75th, 75-90th and 90-100th. Point position\nset at mean temperature within percentile.") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5))
+
+
+ggsave("../figures/temp-rate.png", height=5, width = 8)
+```
+
+```{r}
+d3 %>% 
+  
+  filter(!is.na(lag_temp)) %>% 
+  mutate(
+    t_g = cut(lag_temp, breaks = quantile(lag_temp, prob = c(0,.1,.25,.5,.75,.9,1)), include.lowest = T)
+  ) %>%  
+  group_by(t_g) %>% 
+  summarise(
+    n = n(),
+    pop = sum(pop),
+    dead = sum(air)
+  ) %>% 
+  mutate(
+     ci_l = pois_low(dead, pop)*1000*365,
+    ci_h = pois_high(dead, pop)*1000*365,
+    r = (dead/pop)*1000*365
+  ) %>% 
+  ggplot(aes(t_g, r)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = ci_l, ymax = ci_h), width = 0)+
+  geom_hline(yintercept = 0)
+
+```
+
+```{r}
+d3 %>% 
+  filter(!is.na(lag_temp)) %>% 
+  mutate(
+    t_g = cut(lag_temp, breaks = quantile(lag_temp, prob = c(0,.1,.25,.5,.75,.9,1)), include.lowest = T)
+  ) %>% 
+  group_by(t_g) %>% 
+  summarise(
+    n = n(),
+    pop = sum(pop),
+    dead = sum(water)
+  ) %>% 
+  mutate(
+     ci_l = pois_low(dead, pop)*1000*365,
+    ci_h = pois_high(dead, pop)*1000*365,
+    r = (dead/pop)*1000*365
+  ) %>% 
+  ggplot(aes(t_g, r)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = ci_l, ymax = ci_h), width = 0)+
+  geom_hline(yintercept = 0)
+
+```
+
+
+```{r}
+expos <- d3 %>% select(temp1:temp14) %>% as.matrix() %>% as.vector() %>% na.omit()
+
+pl_d <- d3 %>% 
+  filter(!is.na(temp1)) %>% 
+  mutate(
+    t_g = cut(temp1, breaks = quantile(temp, prob = c(0,.1,.25,.5,.75,.9,1)), include.lowest = T)
+  ) %>% 
+  group_by(t_g) %>% 
+  summarise(
+    n = n(),
+    pop = sum(pop),
+    dead = sum(dead),
+    water = sum(water),
+    air = sum(air),
+    min_t = min(temp),
+    med_t = median(temp),
+    max_t = max(temp)
+  ) %>% 
+  mutate(
+    l_ci_l = pois_low(dead, pop)*1000*365,
+    l_ci_h = pois_high(dead, pop)*1000*365,
+    l_r = (dead/pop)*1000*365,
+    a_ci_l = pois_low(air, pop)*1000*365,
+    a_ci_h = pois_high(air, pop)*1000*365,
+    a_r = (air/pop)*1000*365,
+    w_ci_l = pois_low(water, pop)*1000*365,
+    w_ci_h = pois_high(water, pop)*1000*365,
+    w_r = (water/pop)*1000*365,
+    t_g_name = sprintf("%.1f - %.1f °C", (min_t), (max_t))
+    
+  ) %>% 
+  pivot_longer(cols = l_ci_l:w_r) %>% 
+  mutate(cause = str_extract(name, "^[law]"), name = str_extract(name, "(r|ci_l|ci_h)$")) %>% 
+  pivot_wider(names_from = name, values_from = value) %>% 
+  mutate(
+    cause = factor(cause, levels = c("l", "a", "w"), labels = c("All-cause", "Airborne", "Waterborne"))
+  ) 
+ggplot(pl_d, aes(med_t, r)) + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = ci_l, ymax = ci_h), width = 0) +
+  # geom_hline(yintercept = 0)+
+  scale_x_continuous(breaks = unique(pl_d$med_t), labels = unique(pl_d$t_g_name)) +
+  facet_grid(cause~., scales = "free_y") +
+  labs( x= "Temperature precentile", y = "Rate")
+
+ggsave("../figures/cause-rate-temp.png", height = 5, width = 8)
+
+```
+
+
+
+# Statistical analysis
+
+
+$$
+E(Y) = e^{log(\alpha_t) +\beta X_t}, \\
+
+Y \sim Poisson(\mu)
+$$
+
+The expected number of deaths $Y$ at day $t$ is modeled as function of person days $log(\alpha)$ and a model matrix $x$ and the corresponding matrix of coefficients. Within $x$, in addition to ambient temperature exposure, the non-linear effect of seasonality was specified as a cubic spline with sex degrees of freedom and year as a cubic spline with three degrees of freedom. 
+
+Ambient temperature was assumed to have a lagged non-linear relationship to mortality. 
+
+
+```{r}
+
+
+
+pred_fun <- function(x, exp, cent= NULL){
+  
+  exposures <- matrix(exp, length(exp), 1)
+  crb2 <- crossbasis(
+    exposures, 
+    lag = 0, 
+    argvar =  list(fun= "ns", df = 3), 
+    arglag = list(fun = "integer")
+  ) 
+  
+  
+  fit4 <- glm(dead~ns(dy, df = 4) + ns(y, df = 3) +  offset(log(pop)) + crb2, data = x,
+              family = "poisson")
+  
+  print(summary(fit4))
+  
+  
+  temp_d <- exp[x$dead > 0]
+  
+  min_temp <- ceiling(min(temp_d))
+  max_temp <- floor(max(temp_d))
+  
+  cent0 <- 3
+  if (!is.null(cent)) cent0 <- cent
+  
+  pred <- crosspred(crb2, fit4, cen = cent0,  cumul = F, from = min_temp, max_temp)
+  
+  pred2 <- pred
+  if (is.null(cent)) {
+    new_center <- as.integer(attr(pred$matRRfit, "dimnames")[[1]][pred$matRRfit == min(pred$matRRfit)])
+    
+    pred2 <- crosspred(crb2, fit4, cen = new_center,  cumul = F, from = min_temp, max_temp)
+    
+  }
+  
+  extract_pred(pred2) %>% filter(lag == 0)
+  
+}
+
+
+extract_pred <- function(x) {
+  rr <- reshape2::melt(x$matRRfit)
+  rr_low <- reshape2::melt(x$matRRlow)
+  rr_high <- reshape2::melt(x$matRRhigh)
+  as_tibble(rr) %>% 
+    set_names(c("predvar", "lag", "rr")) %>% 
+    mutate(
+      lag = as.character(lag),
+      rr_low = reshape2::melt(x$matRRlow)[, 3],
+      rr_high = reshape2::melt(x$matRRhigh)[, 3],
+    ) %>% 
+    bind_rows(
+      tibble(
+        predvar = names(x$allRRfit) %>% as.integer(),
+        lag = "-1",
+        rr = x$allRRfit,
+        rr_low = x$allRRlow,
+        rr_high = x$allRRhigh
+      )
+    ) %>% 
+    mutate(
+      lag = str_extract(lag, "(-)?\\d+") %>% as.integer()
+    )
+}
+```
+
+
+
+```{r}
+
+d4 <- d3 %>% 
+  filter(!is.na(temp14)) 
+
+
+temp_exps <- d4 %>% select(temp1:temp14) %>% as.matrix
+
+```
+
+
+```{r}
+d4 %>% filter(age_g == "(31,367]") %>% 
+  # mutate(day = row_number()) %>% 
+  select(datee, temp1:temp9) %>% 
+  slice(1:10) %>% 
+  mutate_if(is.numeric, round, 3) %>% 
+  flextable() %>% autofit()
+```
+
+
+```{r}
+exposures <- temp_exps
+
+crb2 <- crossbasis(
+  exposures, 
+  lag = 13, 
+  argvar =  list(fun = "ns", df = 3) ,# list(fun = "thr", side = "d", thr.value =cent), #list(fun= "ns", df = 3),
+  arglag = list(fun = "ns", knots = logknots(1:13, df = 4))#list(fun = "ns", df =3 ) #list(fun= "strata", df = 3)
+)
+
+
+crb2[c(1:10*3),] %>% 
+  as.data.frame() %>% 
+  mutate_if(is.numeric, round, 3) %>% 
+  flextable()
+```
+
+
+
+
+```{r}
+
+pred_fun_lag_non <- function(x, exp, cent= NULL, min_temp = NULL, max_temp = NULL){
+  
+  # Non-linear temp specification
+  
+  exposures <- exp
+  crb2 <- crossbasis(
+    exposures, 
+    lag = 13, 
+    argvar =  list(fun= "ns", df = 3),
+    arglag = list(fun = "ns", knots = logknots(1:13, df = 4))
+  ) 
+  
+  
+  # f
+  fit4 <- glm(dead~  offset(log(pop)) + crb2+ ns(y, df = 3) + ns(dy, df = 3), data = x,
+              family = "poisson")
+
+  
+  temp_d <- exp[x$dead > 0]
+  
+  if (is.null(min_temp)) min_temp <- ceiling(min(pmin(temp_d)))
+  if (is.null(max_temp)) max_temp <- floor(max(pmax(temp_d)))
+  
+  
+  # message(sprintf("min: %d max: %d", min_temp, max_temp))
+  
+  cent0 <- 3
+  if (!is.null(cent)) cent0 <- cent
+  
+  pred <- crosspred(crb2, fit4, cen = cent0,  cumul = F, from = min_temp, to =max_temp)
+  
+  pred2 <- pred
+  if (is.null(cent)) {
+    preds <- pred$allRRfit
+    preds <- preds[as.integer(names(preds)) > -10]
+    new_center <- as.integer(names(preds)[preds == min(preds)])
+    message(sprintf("New center = %s", new_center))
+    pred2 <- crosspred(crb2, fit4, cen = new_center,  cumul = F, from = min_temp, max_temp)
+    
+  }
+  
+  extract_pred(pred2)
+  
+}
+
+pred_fun_lag <- function(x, exp, cent= NULL, min_temp = NULL, max_temp = NULL){
+  
+  # threshold temp sepecification
+  
+  exposures <- exp
+  crb2 <- crossbasis(
+    exposures, 
+    lag = 13, 
+    argvar =  list(fun = "thr", side = "d", thr.value =cent) ,
+    arglag = list(fun = "ns", knots = logknots(1:13, df = 4))
+  ) 
+  
+  fit4 <- glm(dead~  offset(log(pop)) + crb2+ ns(y, df = 3) + ns(dy, df = 3), data = x,
+              family = "poisson")
+  
+  
+  temp_d <- exp[x$dead > 0]
+  
+  if (is.null(min_temp)) min_temp <- ceiling(min(pmin(temp_d)))
+  if (is.null(max_temp)) max_temp <- floor(max(pmax(temp_d)))
+  # message(sprintf("min: %d max: %d", min_temp, max_temp))
+  
+  cent0 <- 3
+  if (!is.null(cent)) cent0 <- cent
+  
+  pred <- crosspred(crb2, fit4, cen = cent0,  cumul = F, from = min_temp, to =max_temp)
+  
+  pred2 <- pred
+  if (is.null(cent)) {
+    new_center <- as.integer(names(pred$allRRfit)[pred$allRRfit == min(pred$allRRfit)])
+    message(sprintf("New center = %s", new_center))
+    pred2 <- crosspred(crb2, fit4, cen = new_center,  cumul = F, from = min_temp, to =max_temp)
+    
+  }
+  
+  extract_pred(pred2)
+  
+}
+
+```
+
+
+```{r}
+
+temp_d <- d4$lag_temp[d4$dead > 0]
+  
+min_temp <- ceiling(min(pmin(temp_d)))
+max_temp <- floor(max(pmax(temp_d)))
+
+
+r0 <- pred_fun_lag_non(d4, temp_exps, cent = 5, min_temp = min_temp, max_temp = max_temp)
+
+
+ggplot(r0 %>% filter(lag == -1), aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line(color = "#0F5298") +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298") +
+  scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  # scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_thesis() +
+  # facet_wrap(~lag) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+
+ggsave("../figures/temp_non_full.png", height = 3.3, width = 6)
+```
+
+
+```{r}
+
+
+r0a <- pred_fun_lag_non(d4 %>% mutate(dead = air), temp_exps, cent = 7)
+r0w <- pred_fun_lag_non(d4 %>% mutate(dead = water), temp_exps, cent = NULL)
+r0o <- pred_fun_lag_non(d4 %>% mutate(dead = dead - air - water), temp_exps, cent = NULL)
+
+
+bind_rows(
+  r0w %>% mutate(outcome = "Water"),
+  r0a %>% mutate(outcome = "Air"),
+  r0o %>% mutate(outcome = "Other")
+) %>% 
+  filter(lag == -1, rr < 5, rr > .4) %>%
+  ggplot(aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line(color = "#0F5298") +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298", color = NA) +
+  scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_minimal() +
+  facet_wrap(~outcome) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+```
+
+
+
+```{r}
+
+r1 <- pred_fun_lag(d4, temp_exps, cent = 5)
+
+ggplot(r1 %>% filter(lag %in% c(0,2,4,7,9,13)), aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line(color = "#0F5298") +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298", color = NA) +
+  scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  # scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  facet_wrap(~lag) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+```
+
+```{r}
+ggplot(r1 %>% filter(lag == -1),
+  aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line(color = "#0F5298") +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298", color = NA) + 
+  scale_x_continuous(breaks = seq(-40, +25, 5)) +
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  # facet_wrap(~predvar) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+```
+
+
+```{r}
+
+ggplot(r1 %>% filter(predvar %in% c(-30, 25), lag > -1), aes(lag, rr)) + geom_hline(yintercept = 1) +
+  geom_line() +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, color = NA) + 
+  # scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  # scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  facet_wrap(~predvar) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Lag", y = "IRR")
+```
+
+
+```{r}
+r1 %>% filter( lag > -1) %>% 
+  ggplot(aes(predvar, lag, fill = rr)) + geom_tile() +
+  # scale_fill_gradient2(midpoint = 0, trans = "log10", low = "blue", high = "red") +
+  scale_fill_gradient2(midpoint = 1, low = "black",mid = "white",
+  high = "#9ff4cd") +
+  coord_cartesian(expand = F)
+```
+
+
+```{r}
+
+# Airborne
+
+
+temp_d <- d4$lag_temp[d4$air > 0]
+  
+min_temp <- ceiling(min(pmin(temp_d)))
+max_temp <- floor(max(pmax(temp_d)))
+
+
+r2_14 <- pred_fun_lag(d4 %>% mutate(dead = air), temp_exps, cent = 7, min_temp = min_temp, max_temp = max_temp)
+
+r2 <- pred_fun_lag(d4 %>% mutate(dead = air), temp_exps, cent = 7)
+
+
+
+
+ggplot(r2_14 %>% filter(lag == -1), aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line() +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, color = NA) + 
+  scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  facet_wrap(~lag) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+```
+
+
+
+```{r}
+
+ggplot(r2 %>% filter(lag %in% c(0,1,3,4,5,9)), aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line() +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, color = NA) + 
+  scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  facet_wrap(~lag) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+
+```
+
+```{r}
+
+ggplot(r2 %>% filter(predvar %in% c(-25, 25), lag > -1), aes(lag, rr)) + geom_hline(yintercept = 1) +
+  geom_line() +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, color = NA) + 
+  # scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  # scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  facet_wrap(~predvar) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+```
+
+```{r}
+
+# Water and foodborne
+
+temp_d <- d4$lag_temp[d4$water > 0]
+  
+min_temp <- ceiling(min(pmin(temp_d)))
+max_temp <- floor(max(pmax(temp_d)))
+
+
+r3_14 <- pred_fun_lag(d4 %>% mutate(dead = water), temp_exps, cent = 7, min_temp = min_temp, max_temp = max_temp)
+r3 <- pred_fun_lag(d4 %>% mutate(dead = water), temp_exps, cent = 7)
+
+
+ggplot(r3_14 %>% filter(lag == -1), aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line() +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, color = NA) + 
+  scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  # facet_wrap(~lag) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+```
+
+
+```{r}
+
+ggplot(r3 %>% filter(lag %in% c(1,4,7,10,13)), aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line() +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, color = NA) + 
+  scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  facet_wrap(~lag) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+
+```
+
+```{r}
+
+ggplot(r3 %>% filter(predvar %in% c(-25, 25), lag > -1), aes(lag, rr)) + geom_hline(yintercept = 1) +
+  geom_line() +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, color = NA) + 
+  # scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  facet_wrap(~predvar) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+```
+
+
+
+```{r}
+
+# Other
+
+d4 <- d4 %>% mutate(other = dead - water - air)
+
+temp_d <- d4$lag_temp[d4$other > 0]
+  
+min_temp <- ceiling(min(pmin(temp_d)))
+max_temp <- floor(max(pmax(temp_d)))
+
+
+r4_14 <- pred_fun_lag(d4 %>% mutate(dead = dead - water - air), temp_exps, cent = 1, min_temp = min_temp, max_temp = max_temp)
+
+r4 <- pred_fun_lag(d4 %>% mutate(dead = dead - water - air), temp_exps, cent = 1)
+
+
+ggplot(r4_14 %>% filter(lag == -1), aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line() +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, color = NA) + 
+  scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  # facet_wrap(~lag) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+```
+
+
+```{r}
+
+ggplot(r4 %>% filter(lag %in% c(1,4,7,10,13)), aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line() +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, color = NA) + 
+  scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  facet_wrap(~lag) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+
+```
+
+```{r}
+
+ggplot(r4 %>% filter(predvar %in% c(-25, 25), lag > -1), aes(lag, rr)) + geom_hline(yintercept = 1) +
+  geom_line() +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, color = NA) + 
+  # scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  # scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  facet_wrap(~predvar) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+```
+
+
+```{r}
+ra1 <- bind_rows(
+  r2_14 %>% mutate(outcome = "Air"),
+  r3_14 %>% mutate(outcome = "Water"), 
+  r4_14 %>% mutate(outcome = "Other")
+) %>% 
+  mutate(outcome = factor(outcome, levels = c("Water", "Air", "Other")) %>% fct_rev) 
+
+```
+
+```{r}
+ra1 %>% 
+  filter(lag == -1) %>% 
+  ggplot(aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line(color = "#0F5298") +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298", color = NA) + 
+  scale_x_continuous(breaks = seq(-40, +25, 10)) + 
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  facet_wrap(~outcome) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+
+ggsave("../figures/temp-cause-all.png", height = 3.3, width = 7)
+```
+
+
+
+```{r}
+
+
+ra1_a <- bind_rows(
+  r2 %>% mutate(outcome = "Air"),
+  r3 %>% mutate(outcome = "Water"), 
+  r4 %>% mutate(outcome = "Other")
+) %>% 
+  mutate(outcome = factor(outcome, levels = c("Water", "Air", "Other")) %>% fct_rev) 
+
+
+ra1_a %>% filter(predvar %in% c(-20,20), lag > -1) %>% 
+  ggplot(aes(lag +1, rr)) + geom_hline(yintercept = 1) +
+  geom_line(color = "#0F5298") +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298", color = NA) +
+  scale_x_continuous(breaks = seq(1,14, 2)) +
+  scale_y_log10(breaks = c(.64,.8,1,1.2,1.44,1.73, 2.1)) +
+  theme_classic() +
+  facet_grid(predvar~outcome) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Lag time", y = "IRR")
+
+ggsave("../figures/temp-cause-lag.png", height = 5, width = 7)
+  
+```
+
+
+
+```{r}
+# percentiles by outcome
+perc_g <- d4 %>% 
+  select(dead,air, water, other, lag_temp) %>% 
+  pivot_longer(dead:other) %>% 
+  filter(value > 0, !is.na(lag_temp), !is.na(value)) %>% 
+  group_by(name) %>% 
+  summarise(
+    # min_temp = min(lag_temp),
+    `1th` = quantile(lag_temp, probs = .01),
+    `10th` = quantile(lag_temp, probs = .1),
+    `25th` = quantile(lag_temp, probs = .25),
+    `50th` = quantile(lag_temp, probs = .5),
+    `75th` = quantile(lag_temp, probs = .75),
+    `90th` = quantile(lag_temp, probs = .90),
+    `99th` = quantile(lag_temp, probs = .99)
+    # max_temp = max(lag_temp)
+  ) %>% 
+  pivot_longer(
+    -name, names_to = "perc"
+  ) %>% 
+  mutate(predvar = round(value), name = str_to_title(name))
+  
+
+
+
+perc0 <- quantile(as.vector(d4$lag_temp[d4$dead > 0]), probs = c(.01,.1,.25,.5,.75,.9,.99))
+names(perc0) <- c("1th", "10th","25th","50th", "75th","90th","99th")
+
+ra1 %>% 
+  filter(lag == -1) %>% 
+  right_join(perc_g, by = c("outcome" = "name", "predvar")) %>% 
+  # filter(predvar %in% round(perc)) %>% 
+  # mutate(perc = factor(predvar, levels = round(perc), labels=names(perc))) %>% 
+  select(outcome, perc, predvar, rr, rr_low, rr_high) %>%
+  mutate(across(starts_with("rr"), ~round(., 2))) %>% 
+  mutate(
+    outcome = factor(outcome, levels = c("Other", "Air", "Water"), labels = c("Other", "AID", "WFID")),
+    predvar = ifelse(predvar > 0, sprintf("+%s", predvar), as.character(predvar))
+  ) %>% 
+  set_names(c("Cause", "Percentile", "Temperature", "RR", "CI low", "CI high")) %>% 
+  flextable() %>% 
+  merge_v(1) %>% 
+  autofit() 
+```
+
+```{r}
+r0 %>% 
+  filter(lag== -1) %>% 
+  filter(predvar %in% round(perc0)) %>%
+  mutate(perc = factor(predvar, levels = round(perc0), labels=names(perc0))) %>%
+  select(perc, predvar, rr, rr_low, rr_high) %>%
+  mutate(across(starts_with("rr"), ~round(., 2))) %>% 
+  mutate(
+    # outcome = factor(outcome, levels = c("Other", "Air", "Water"), labels = c("Other", "AID", "WFID")),
+    predvar = ifelse(predvar > 0, sprintf("+%s", predvar), as.character(predvar))
+  ) %>% 
+  set_names(c("Percentile", "Temperature", "RR", "CI low", "CI high")) %>% 
+  flextable() %>% 
+  # merge_v(1) %>% 
+  autofit() 
+```
+```{r}
+
+perc <- quantile(as.vector(d4$temp[d4$dead > 0]), probs = c(.01,.1,.25,.5,.75,.9,.99))
+names(perc) <- c("1th", "10th","25th","50th", "75th","90th","99th")
+round(perc)
+```
+
+
+```{r}
+ra1 %>% filter(predvar %in% c(-20, 20), lag > -1) %>% 
+  arrange(outcome, predvar, lag) %>% 
+  # mutate(across(starts_with("rr"), ~round(., 3))) %>% 
+  mutate(cis = sprintf("%.3f - %.3f", rr_low, rr_high), rr = round(rr, 3)) %>% select(predvar, lag, outcome, rr, cis) %>% 
+  pivot_wider(names_from = outcome, values_from = c(rr, cis)) %>% 
+  select(c(1,2,3,6,4,7,5,8)) %>% 
+  flextable() %>% 
+  autofit()
+```
+
+
+```{r}
+
+
+dit0l <- glm(dead~ns(lag_temp, df = 3)+ns(dy, df = 6) + y + offset(log(pop)), data = d3 , 
+            family = "poisson")
+
+summary(dit0l)
+```
+
+# Seaonality
+
+
+```{r}
+ref_day <- 31
+sd1 <- d4 %>% 
+  mutate(
+    year_day     = yday(datee) -1,
+    year_day_c   = year_day - ref_day,
+    year_day_c   = ifelse(year_day_c < 0, max(year_day)+year_day_c, year_day_c),
+    year_day_feb = year_day - 212,
+    year_day_feb   = ifelse(year_day_feb < 0, max(year_day)+year_day_feb, year_day_feb),
+    
+  )
+```
+
+```{r}
+
+
+season_fun <- function(x, exp, cent= NULL){
+  
+  exposures <- matrix(exp, length(exp), 1)
+  crb2 <- crossbasis(
+    exposures, 
+    lag = 0, 
+    argvar =  list(fun= "ns", df = 6), 
+    arglag = list(fun = "integer")
+  ) 
+  
+
+  fit4 <- glm(dead~ offset(log(pop)) + age_g + crb2, data = x,
+              family = "poisson")
+  
+  
+  cent0 <- 3
+  if (!is.null(cent)) cent0 <- cent
+  
+  pred <- crosspred(crb2, fit4, cen = cent0,  by = 1, cumul = F)
+  
+  pred2 <- pred
+  if (is.null(cent)) {
+    new_center <- as.integer(attr(pred$matRRfit, "dimnames")[[1]][pred$matRRfit == min(pred$matRRfit)])
+
+    pred2 <- crosspred(crb2, fit4, cen = new_center,  by = 1, cumul = F)
+
+  }
+  
+  extract_pred(pred2) %>% filter(lag == 0)
+  
+}
+
+
+season_fun_temp <- function(x, exp, cent= NULL){
+  
+  exposures <- matrix(exp, length(exp), 1)
+  crb2 <- crossbasis(
+    exposures, 
+    lag = 0, 
+    argvar =  list(fun= "ns", df = 6),
+    arglag = list(fun = "integer")
+  ) 
+  
+  
+ 
+  fit4 <- glm(dead~ ns(y, df = 3) + ns(lag_temp, df = 3) + age_g + ns(temp, df = 3) + offset(log(pop)) + crb2, data = x,
+              family = "poisson")
+  
+  
+  cent0 <- 3
+  if (!is.null(cent)) cent0 <- cent
+  
+  pred <- crosspred(crb2, fit4, cen = cent0,  by = 1, cumul = F)
+  
+  pred2 <- pred
+  if (is.null(cent)) {
+    new_center <- as.integer(attr(pred$matRRfit, "dimnames")[[1]][pred$matRRfit == min(pred$matRRfit)])
+
+    pred2 <- crosspred(crb2, fit4, cen = new_center,  by = 1, cumul = F)
+
+  }
+  
+  extract_pred(pred2) %>% filter(lag == 0)
+  
+}
+
+```
+
+
+```{r}
+sd1 %>% 
+  mutate(season = case_when(
+    month %in% c(12, 1,2) ~ "Winter",
+    month %in% c(3,4,5) ~ "Spring",
+    month %in% c(6,7,8) ~ "Summer",
+    month %in% c(9,10,11) ~ "Autumn"
+  )) %>% 
+  group_by(season) %>% 
+  summarise(
+    pop = (sum(pop)/365.25), 
+    dead = sum(dead),
+    air = sum(air),
+    water = sum(water)
+  ) %>% 
+  mutate(
+    r = (dead/pop)*1000,
+    air = (air/pop)*1000,
+    water = (water/pop)*1000,
+    season = factor(season, levels = c("Spring", "Summer", "Autumn", "Winter"))
+  ) %>% 
+  mutate_if(is.numeric, round, 1) %>% 
+  arrange(season) %>% 
+  flextable()
+```
+
+
+```{r}
+mnts <- tibble(
+  month_n = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep","Oct","Nov","Dec"),
+  month = 1:12
+ 
+)
+
+t_brks <- sd1 %>% 
+  mutate(
+    year_day_c2 = ifelse(year_day_c < 0, max(year_day)+year_day_c, year_day_c)
+  ) %>% 
+  group_by(month) %>% 
+  summarise(start_d =year_day_c2[year_day == min(year_day)]) %>% 
+  arrange(start_d) %>% 
+  left_join(mnts)
+
+
+```
+
+```{r}
+
+ref_day = NULL #aug = 190
+res0 <- bind_rows(
+  season_fun(sd1 %>%  mutate(dead = air), sd1$year_day_c, cent = ref_day) %>% mutate(out = "air"),
+  season_fun(sd1 %>%  mutate(dead = water), sd1$year_day_c, cent = ref_day) %>% mutate(out = "water"),
+  season_fun(sd1 %>%  mutate(dead = dead - water - air), sd1$year_day_c, cent = ref_day) %>% mutate(out = "other"),
+  season_fun(sd1, sd1$year_day_c, cent = ref_day) %>% mutate(out = "all")
+) %>% 
+  mutate(out = factor(out, levels = c("all","other", "air", "water")))
+
+
+ggplot(res0, aes(predvar, rr)) + 
+  geom_hline(yintercept = 1) +
+  geom_line(color = "#0F5298") +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298") +
+  scale_y_log10() +
+  scale_x_continuous(breaks = t_brks$start_d, labels = t_brks$month_n) + 
+  facet_grid(out~.)
+
+```
+
+```{r}
+res1 <- bind_rows(
+  season_fun_temp(sd1 %>%  mutate(dead = air), sd1$year_day_c, cent = ref_day) %>% mutate(out = "air"),
+  season_fun_temp(sd1 %>%  mutate(dead = water), sd1$year_day_c, cent = ref_day) %>% mutate(out = "water"),
+  season_fun_temp(sd1 %>%  mutate(dead = dead - water - air), sd1$year_day_c, cent = ref_day) %>% mutate(out = "other"),
+  season_fun_temp(sd1, sd1$year_day_c, cent = ref_day) %>% mutate(out = "all")
+)%>% 
+  mutate(out = factor(out, levels = c("all", "other", "air", "water")))
+
+
+ggplot(res1, aes(predvar, rr)) + 
+  geom_hline(yintercept = 1) +
+  geom_line(color = "#0F5298") +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298") +
+  scale_y_log10() +
+  scale_x_continuous(breaks = t_brks$start_d, labels = t_brks$month_n) + 
+  facet_grid(out~.)
+
+
+```
+
+
+```{r}
+
+bind_rows(
+  res0 %>% mutate(mod = "Unadjusted"),
+  res1 %>% mutate(mod = "Adjusted")
+) %>% 
+  mutate(mod = factor(mod) %>% fct_rev()) %>% 
+  filter(out != "all") %>% 
+  mutate(out = factor(out, levels = c("other", "air", "water"), labels = c("Other", "AID", "WFID"))) %>% 
+  
+ggplot(aes(predvar, rr, group = mod)) + 
+  geom_hline(yintercept = 1) +
+  # geom_line() +
+  geom_line(color = "#0F5298") +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298") +
+  scale_y_log10(breaks = c(1,1.2,1.5,2,3,4,6,16)) +
+  ggthemes::scale_color_tableau() + 
+  scale_x_continuous(breaks = t_brks$start_d, labels = t_brks$month_n) + 
+  # scale_y_log10() +
+  facet_grid(out~mod, scales = "free_y") +
+  labs(x = "Day of year", y = "IRR") +
+  theme_minimal() + 
+  theme(panel.grid.minor = element_blank())
+
+ggsave("../figures/seaonal-est.png", height = 6, width = 8)
+
+```
+
+
+
+```{r}
+bind_rows(
+  res0 %>% mutate(mod = "unadjust"),
+  res1 %>% mutate(mod = "adjust")
+) %>% 
+  mutate(mod = factor(mod) %>% fct_rev()) %>% 
+  
+ggplot(aes(predvar, rr, group = mod, color = mod)) + 
+  geom_hline(yintercept = 1) +
+  geom_line() +
+  # geom_line(color = "#0F5298") +
+  # geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298") +
+  # scale_y_log10() +
+  ggthemes::scale_color_tableau() + 
+  scale_x_continuous(breaks = t_brks$start_d, labels = t_brks$month_n) + 
+  facet_grid(out~., scales = "free_y") 
+
+
+```
+
+```{r}
+po_test_d <- season_fun(sd1, sd1$year_day_c) %>% mutate(out = "all")
+
+bind_rows(
+  res0 %>% filter(out == "all") %>% mutate(model = "Unadjusted"),
+  res1 %>% filter(out == "all") %>% mutate(model = "Adjusted")
+) %>% 
+  mutate(model = factor(model) %>% fct_rev()) %>% 
+ggplot(aes(predvar, rr, group = model)) + 
+  geom_hline(yintercept = 1) +
+  geom_line(color = "#0F5298") +
+  # geom_line() + 
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298") +
+  scale_y_log10(breaks = c(1,1.2,1.4,1.6,1.8,2)) +
+  scale_x_continuous(breaks = t_brks$start_d, labels = t_brks$month_n)  +
+  labs(y = "IRR (log scale)", x = NULL, color = "Model") +
+  # coord_polar(theta = "x") 
+  facet_wrap(model~., nrow = 1) +
+  theme_minimal() +
+  theme(panel.grid.minor = element_blank())
+ggsave("../figures/seaonal-est-all-cause.png", height = 3, width = 6, scale = 1.2)
+```
+
+```{r}
+bind_rows(
+  res0 %>% filter(out == "all") %>% mutate(model = "Unadjusted"),
+  res1 %>% filter(out == "all") %>% mutate(model = "Adjusted")
+) %>% 
+  left_join(distinct(t_brks), by = c("predvar" = "start_d")) %>% 
+  filter(!is.na(month_n)) %>% 
+  flextable()
+```
+
+
