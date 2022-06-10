@@ -13,20 +13,20 @@ epsg_ref <- 3014 # Sundsvall
 par_samp <- tribble(
   ~geom_id,~par_name, ~region,
   #----|--------|----------
-  2752,"Hässjö","Rural",
-  1503,"Tynderö","Rural",
-  3819,"Ljustorp","Rural",
-  1413,"Indals","Rural",
-  3195,"Sättna","Rural",
-  2454,"Selånger","Rural",
-  1392,"Tuna","Rural",
-  2661,"Attamar","Rural",
-  3944,"Njurunda","Industrial",
-  3365,"Timrå","Industrial",
-  2228,"Sköns","Industrial",
-  2539,"Gustav Adolfs","Urban",
-  2840,"Skönsmons","Industrial",
-  3028,"Alnö","Industrial",
+  14571,"Hässjö","Rural",
+  13232,"Tynderö","Rural",
+  15675,"Ljustorp","Rural",
+  13120,"Indals","Rural",
+  14959,"Sättna","Rural",
+  14261,"Selånger","Rural",
+  13098,"Tuna","Rural",
+  14476,"Attamar","Rural",
+  15808,"Njurunda","Industrial",
+  15151,"Timrå","Industrial",
+  12786,"Sköns","Industrial",
+  14342,"Gustav Adolfs","Urban",
+  14670,"Skönsmons","Industrial",
+  14885,"Alnö","Industrial",
 )
 
 
@@ -39,7 +39,7 @@ library(sf)
 
 par_d <- histmaps::geom_sp %>% filter(geom_id %in% par_samp$geom_id) %>% st_transform(crs = epsg_ref)   # filter(start <= 1900, end >= 1900)
 
-e1900 <- histmaps::e1900 %>% st_as_sf()
+e1900 <- histmaps::eu_geom
 
 # st_geometry(par_d) %>% plot()
 
@@ -58,17 +58,17 @@ x <- 1890
 
 # bkg <- st_crop(bkg, bbox)
 
-load("../histmaps-v2/data/e1900.rda")
-load("../histmaps-v2/data/e1900bounds.rda")
+# load("../histmaps-github/data/e1900.rda")
+# load("../histmaps-v2/data/e1900bounds.rda")
+# 
+# load("../histmaps-v2/data/geom_borders.rda")
 
-load("../histmaps-v2/data/geom_borders.rda")
+# e1900 <- st_as_sf(e1900)
 
-e1900 <- st_as_sf(e1900)
-
-bkg <- e1900 %>% filter(COUNTRY != 20) %>%  st_transform(crs = epsg_ref) %>% 
+bkg <- e1900 %>% filter(country != "20") %>%  st_transform(crs = epsg_ref) %>% 
   st_crop(bbox)
 
-swe <- st_as_sf(sweden) %>% st_transform(crs = epsg_ref) %>% 
+swe <- histmaps::geom_sp %>% filter(type_id == "county", start <=1900, end >=1900) %>% count(1) %>% st_transform(crs = epsg_ref) %>% 
   st_crop(bbox)
 
 cnt <- geom_borders %>% filter(type_id == "county", start <= x, end >= x)  %>% st_transform(crs = epsg_ref)
@@ -107,8 +107,8 @@ p_d <- p_d %>%
            str_replace(" ", "\n"))
 
 
-eur_poly <- st_as_sf(e1900)
-eur_line <- st_as_sf(e1900bounds)
+eur_poly <- histmaps::eu_geom %>% filter(year == 1900)
+eur_line <- histmaps::eu_border %>% filter(year == 1900)
 
 bb1 <- st_bbox(st_transform(p_d, crs=  st_crs(eur_poly)))+ c(-pad*3, -pad,pad,pad)
 obb <- st_bbox(eur_poly)
@@ -140,6 +140,9 @@ ndg <- rep(0, 14)
 
 ndg[9] <- ndg[9] + 2000
 
+par_borders <- geom_borders %>% #filter(geom_id %in% p_d$geom_id) 
+  left_join(par_samp) %>% filter(!is.na(par_name))
+
 b_map <- ggplot() +
   geom_sf(data = bkg, color = NA, fill = "#e5f5f9") +
   geom_sf(data = swe, color = NA, fill = "#e5f5f9") + 
@@ -147,7 +150,7 @@ b_map <- ggplot() +
   # geom_sf(data = brdr, color = "gray80") +
   geom_sf(data = cnt,  color = "gray60", size = .4) +
   geom_sf(data = p_d, aes(fill = region), size = .3, color = NA) + # fill = "#2ca25f"
-  geom_sf(data = geom_borders %>% filter(geom_id %in% p_d$geom_id)  %>% st_transform(crs = epsg_ref), size = .2, color = "gray20") +
+  geom_sf(data = par_borders %>% st_transform(crs = epsg_ref), size = .2, color = "gray20") +
   coord_sf(xlim = bbox[c(1,3)], ylim = bbox[c(2,4)], expand = FALSE) +
   # ggrepel::geom_text_repel(data = p_d, 
   #                           size = 2.2,

@@ -17,7 +17,7 @@ library(lubridate)
 library(flextable)
 library(broom)
 library(tidyverse)
-library(rcustom)
+# library(rcustom)
 
 theme_set(theme_light())
 ```
@@ -332,10 +332,13 @@ d3 <- temp_case_data
 
 # Data
 
+Summary statistics from the individual data (not run)
 
-```{r}
-load("../data/case_dat.rda")
-s1 <- case_dat %>% 
+```{r, eval = FALSE}
+
+
+load("../data/indiv_data.rda")
+s1 <- indiv_data %>% 
   summarise(
     temp_g = "N",
     births = n(),
@@ -383,6 +386,7 @@ d3 %>%
   autofit()
 ```
 
+60 day rolling avreage mortality rate
 
 ```{r}
 p_length <- 60
@@ -416,12 +420,9 @@ a1 %>%
   mutate(r = (d/(b/30))*1000)
 ```
 
+# Models
 
-```{r}
-
-```
-
-
+Simple models to check non-linear relationship between temperature and infant mortality
 
 ```{r}
 
@@ -447,6 +448,7 @@ ggplot(new_d, aes(temp, pr)) + geom_line()
 
 ```
 
+Check non-linear realtionship using rates
 
 ```{r}
 pois_low <- function(d, p){
@@ -616,47 +618,7 @@ Ambient temperature was assumed to have a lagged non-linear relationship to mort
 
 ```{r}
 
-
-
-pred_fun <- function(x, exp, cent= NULL){
-  
-  exposures <- matrix(exp, length(exp), 1)
-  crb2 <- crossbasis(
-    exposures, 
-    lag = 0, 
-    argvar =  list(fun= "ns", df = 3), 
-    arglag = list(fun = "integer")
-  ) 
-  
-  
-  fit4 <- glm(dead~ns(dy, df = 4) + ns(y, df = 3) +  offset(log(pop)) + crb2, data = x,
-              family = "poisson")
-  
-  print(summary(fit4))
-  
-  
-  temp_d <- exp[x$dead > 0]
-  
-  min_temp <- ceiling(min(temp_d))
-  max_temp <- floor(max(temp_d))
-  
-  cent0 <- 3
-  if (!is.null(cent)) cent0 <- cent
-  
-  pred <- crosspred(crb2, fit4, cen = cent0,  cumul = F, from = min_temp, max_temp)
-  
-  pred2 <- pred
-  if (is.null(cent)) {
-    new_center <- as.integer(attr(pred$matRRfit, "dimnames")[[1]][pred$matRRfit == min(pred$matRRfit)])
-    
-    pred2 <- crosspred(crb2, fit4, cen = new_center,  cumul = F, from = min_temp, max_temp)
-    
-  }
-  
-  extract_pred(pred2) %>% filter(lag == 0)
-  
-}
-
+# Function to extract predicted values from the dlnm model
 
 extract_pred <- function(x) {
   rr <- reshape2::melt(x$matRRfit)
@@ -685,6 +647,7 @@ extract_pred <- function(x) {
 ```
 
 
+Create the tempearture exposure matrix
 
 ```{r}
 
@@ -705,7 +668,7 @@ d4 %>% filter(age_g == "(31,367]") %>%
   mutate_if(is.numeric, round, 3) %>% 
   flextable() %>% autofit()
 ```
-
+Check the creation of the crossbasis matrix
 
 ```{r}
 exposures <- temp_exps
@@ -713,8 +676,8 @@ exposures <- temp_exps
 crb2 <- crossbasis(
   exposures, 
   lag = 13, 
-  argvar =  list(fun = "ns", df = 3) ,# list(fun = "thr", side = "d", thr.value =cent), #list(fun= "ns", df = 3),
-  arglag = list(fun = "ns", knots = logknots(1:13, df = 4))#list(fun = "ns", df =3 ) #list(fun= "strata", df = 3)
+  argvar =  list(fun = "ns", df = 3) ,
+  arglag = list(fun = "ns", knots = logknots(1:13, df = 4))
 )
 
 
@@ -725,7 +688,7 @@ crb2[c(1:10*3),] %>%
 ```
 
 
-
+Createion of wrapper functions for a threshold model and a non-linear model
 
 ```{r}
 
@@ -776,7 +739,7 @@ pred_fun_lag_non <- function(x, exp, cent= NULL, min_temp = NULL, max_temp = NUL
 
 pred_fun_lag <- function(x, exp, cent= NULL, min_temp = NULL, max_temp = NULL){
   
-  # threshold temp sepecification
+  # threshold temp specification
   
   exposures <- exp
   crb2 <- crossbasis(
@@ -815,6 +778,7 @@ pred_fun_lag <- function(x, exp, cent= NULL, min_temp = NULL, max_temp = NULL){
 
 ```
 
+Overall association between temperature and IM. `lag = -1` is the total effect given exposure in the past 14 days
 
 ```{r}
 
@@ -842,8 +806,6 @@ ggsave("../figures/temp_non_full.png", height = 3.3, width = 6)
 
 
 ```{r}
-
-
 r0a <- pred_fun_lag_non(d4 %>% mutate(dead = air), temp_exps, cent = 7)
 r0w <- pred_fun_lag_non(d4 %>% mutate(dead = water), temp_exps, cent = NULL)
 r0o <- pred_fun_lag_non(d4 %>% mutate(dead = dead - air - water), temp_exps, cent = NULL)

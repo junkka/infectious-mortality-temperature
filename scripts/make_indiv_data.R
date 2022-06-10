@@ -200,7 +200,7 @@ k_6 <- k_5 %>%
   ) %>% ungroup()
 
 
-case_dat <- k_6 %>% 
+indiv_data <- k_6 %>% 
   replace_na(list(interval = 0))
 
-save(case_dat, file = "data/case_dat.rda")
+save(indiv_data, file = "data/indiv_data.rda")

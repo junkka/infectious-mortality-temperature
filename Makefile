@@ -32,9 +32,13 @@ $(FD)/map-samp-mig.png: $(SD)/map.R
 	$(CMD) $(SD)/map.R
 	
 
-$(DD)/temp_case_data.rda: $(SD)/case_dat.R 
+$(DD)/temp_case_data.rda: $(SD)/combine_case_and_temp.R 
+	$(CMD) $(SD)/combine_case_and_temp.R
+	
+
+$(DD)/case_data.rda: $(SD)/case_dat.R $(DD)/indiv_data.rda
 	$(CMD) $(SD)/case_dat.R
 
-$(DD)/case_dat.rda: $(SD)/make_case_data.R
-	$(CMD) $(SD)/make_case_data.R
+$(DD)/indiv_data.rda: $(SD)/make_indiv_data.R
+	$(CMD) $(SD)/make_indiv_data.R
 	
