@@ -8,6 +8,6 @@
 *.zip
 *.Rout
 data-raw/
-data/*.rda
+data/indiv_data.rda
 figures/*.png
 figures/*.pdf
