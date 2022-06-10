@@ -5,7 +5,7 @@ library(tidyverse)
 # Prepare temperature data --------------
 
 
-harno <- read_delim("data-raw/smhi-opendata_1_127380_20210823_173023.csv", delim = ";", skip = 9) %>% 
+harno <- read_delim("data-raw/smhi-opendata_1_127380_20210823_173023.csv.gz", delim = ";", skip = 9) %>% 
   set_names(c("date", "time", "temperature", "quality", "n1", "n2")) %>% 
   select(date, time, temperature, quality)
 
@@ -90,7 +90,7 @@ temp_harno <- h0 %>%
 
 
 
-save(temp_harno, file="data/temp_harno.rda")
+save(temp_harno, file="data/temp_harno.rda", compress = "xz")
 
 # Combine death case data with  ------------------
 
@@ -104,4 +104,4 @@ temp_case_data <- left_join(
   filter(!is.na(temp)) %>% 
   rename(pop = n)
 
-save(temp_case_data, file = "data/temp_case_data.rda")
+save(temp_case_data, file = "data/temp_case_data.rda", compress = "xz")
