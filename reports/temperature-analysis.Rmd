@@ -19,12 +19,19 @@ library(broom)
 library(tidyverse)
 # library(rcustom)
 
+theme_thesis <- function () {
+    theme(panel.background = element_rect(fill = NA), panel.grid.major = element_line(colour = "grey80"), 
+        legend.background = element_rect(fill = "white", colour = "grey60"), 
+        legend.key = element_blank(), axis.ticks = element_blank(), 
+        strip.background = element_rect(fill = NA))
+}
+
 theme_set(theme_light())
 ```
 
 
 ```{r}
-harno <- read_delim("../data-raw/smhi-opendata_1_127380_20210823_173023.csv", delim = ";", skip = 9) %>% 
+harno <- read_delim("../data-raw/smhi-opendata_1_127380_20210823_173023.csv.gz", delim = ";", skip = 9) %>% 
   set_names(c("date", "time", "temperature", "quality", "n1", "n2")) %>% 
   select(date, time, temperature, quality)
 

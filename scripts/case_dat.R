@@ -128,4 +128,4 @@ res5 <- indxx %>%
 
 case_data <- res5 %>% select(datee, y, dy, month, wday, age_g, n, dead, air, water, unknown)
 
-save(case_data, file = "data/case_data.rda")
+save(case_data, file = "data/case_data.rda", compress = "xz")
