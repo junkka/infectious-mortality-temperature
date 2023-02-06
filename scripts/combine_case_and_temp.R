@@ -85,6 +85,12 @@ temp_harno <- h0 %>%
     temp12 = lag(temp, 12),
     temp13 = lag(temp, 13),
     temp14 = lag(temp, 14),
+    temp15 = lag(temp, 15),
+    temp16 = lag(temp, 16),
+    temp17 = lag(temp, 17),
+    temp18 = lag(temp, 18),
+    temp19 = lag(temp, 19),
+    temp20 = lag(temp, 20),
     lag_temp = rol_avg(temp1, 7)
   ) 
 

@@ -64,38 +64,14 @@ harno %>%
 
 
 ```{r}
-# interpolate missing
-# na.spline
+load("../data/temp_harno.rda")
 
-f <- function(d){
-  x <- zoo(d$temperature, d$idx)
-  na.spline(x, na.rm = F)
-}
-
-h0 <- harno %>% 
-  filter(date < "1893-01-01") %>% 
-  # filter(date < "1869-11-01", date > "1869-10-15") %>% 
-  # slice(1:100) %>% 
-  mutate(
-    idx = as.integer(date)
-  ) %>% 
-  complete( time, idx, fill = list(temperature = NA)) %>% 
-  group_by(time) %>% 
-  nest() %>% 
-  mutate(
-    d2 = map(data, f),
-    app = map(d2, as.vector)
-  ) %>% 
-  unnest(cols = c(data, app)) %>% 
-  arrange(date, time) %>% 
-  mutate(date= as.Date(idx)) 
-
-h0 %>% filter(is.na(temperature))
+h0 <- temp_harno
 ```
 
 
 ```{r, fig.width=8, fig.height=4}
-h0 %>%
+harno %>%
   # slice(1:10) %>% 
   filter(date < "1893-01-01") %>% 
   mutate(
@@ -115,29 +91,40 @@ ggsave("../figures/temperature-time.png", height = 4, width = 8)
 ```
 
 ```{r}
+h0 %>% ungroup() %>% 
+  filter(date >= "1868-01-01", date < "1893-01-01") %>% 
+  group_by(date) %>% summarise(temperature = mean(temp, na.rm = T)) %>% ungroup() %>% 
+  summarise(min = min(temperature, na.rm=T), max = max(temperature, na.rm=T)) %>% 
+  flextable() %>% 
+  set_caption("Daily mean min, max")
+```
+
+
+```{r}
 brks <- h0 %>% 
   # slice(1:10) %>% 
   filter(date < "1893-01-01") %>% 
   mutate(
-    dt = lubridate::ymd_hms(paste(date, time)),
-    yd = yday(dt),
-    month = month(dt, label = T)
-  ) %>% 
+  #   dt = lubridate::ymd_hms(paste(date, time)),
+  #   yd = yday(dt),
+    month = month(date, label = T)
+  ) %>%
   group_by(month) %>% 
-  summarise(start_day = min(yd))
+  summarise(start_day = min(yday))
 
-h0 %>%
-  # slice(1:10) %>% 
-  filter(date < "1893-01-01") %>% 
-  mutate(
-    dt = lubridate::ymd_hms(paste(date, time)),
-    yd = yday(dt)
-  ) %>% 
-  group_by(yd) %>% 
+# h0 %>%
+#   # slice(1:10) %>% 
+#   filter(date < "1893-01-01") %>% 
+#   mutate(
+#     dt = lubridate::ymd_hms(paste(date, time)),
+#     yd = yday(dt)
+#   ) %>% 
+h0 %>% 
+  group_by(yday) %>% 
   summarise(
-    temp = mean(app)
+    temp = mean(temp)
   ) %>% ungroup() %>% 
-  ggplot(aes(yd, temp)) + 
+  ggplot(aes(yday, temp)) + 
   geom_hline(yintercept = 0, size = .2) +
   geom_line() +
   scale_x_continuous(breaks = brks$start_day, labels = brks$month) +
@@ -209,6 +196,12 @@ h1 <- h0 %>%
     temp12 = lag(temp, 12),
     temp13 = lag(temp, 13),
     temp14 = lag(temp, 14),
+    temp15 = lag(temp, 15),
+    temp16 = lag(temp, 16),
+    temp17 = lag(temp, 17),
+    temp18 = lag(temp, 18),
+    temp19 = lag(temp, 19),
+    temp20 = lag(temp, 20),
     lag_temp = rol_avg(temp1, 7)
   ) 
 
@@ -388,7 +381,7 @@ d3 %>%
   ) %>% 
   bind_rows(s2) %>% 
   mutate_if(is.numeric, round, 2) %>% 
-  set_names(c(" ", "Births", "Mortality", "Waterborne", "Airborne", "Temperature")) %>% 
+  set_names(c(" ", "Births", "Mortality", "WFID", "AID", "Temperature")) %>% 
   flextable() %>% 
   autofit()
 ```
@@ -426,6 +419,52 @@ a1 %>%
   group_by(month) %>% summarise(b = sum(pop), d = sum(dead)) %>% 
   mutate(r = (d/(b/30))*1000)
 ```
+
+```{r}
+# dayly rate
+a1 %>% 
+  group_by(dy) %>% 
+  summarise(deaths= sum(dead), pop = sum(pop)) %>% 
+  ungroup() %>% 
+  mutate(r = (deaths/(pop))*1000) %>% 
+  ggplot(aes(dy, r)) + 
+  geom_hline(yintercept = 0, size = .2) +
+  geom_line(color = "gray50") +
+  scale_x_continuous(breaks = brks$start_day, labels = brks$month) +
+  geom_smooth(se = F, span = .5) +
+  labs(x = "Day of month", y = "Daily mortality rate") + 
+  theme_classic()
+
+ggsave("../figures/month_rate.png", height = 4, width = 7)
+
+```
+
+
+```{r}
+a1 %>% 
+  group_by(dy) %>% 
+  summarise(deaths= sum(dead), AID = sum(air), WFID = sum(water), Other = sum(unknown), pop = sum(pop)) %>% 
+  ungroup() %>% 
+  pivot_longer(cols = c(deaths:Other), names_to = "COD", values_to = "deaths") %>% 
+  mutate(r = (deaths/(pop))*1000) %>% 
+  group_by(COD) %>% 
+  mutate(
+    r = zoo::rollmean(r, 7, fill = NA, align = "center")
+  ) %>% 
+  filter(COD %in% c("AID", "WFID")) %>% 
+  ggplot(aes(dy, r)) + 
+  geom_hline(yintercept = 0, size = .2) +
+  geom_line(color = "gray50") +
+  scale_x_continuous(breaks = brks$start_day, labels = brks$month) +
+  geom_smooth(se = F, span = .5, color ="#0F5298") +
+  facet_wrap(~COD) +
+  labs(x = "Day of month", y = "Daily mortality rate") + 
+  theme_classic()
+
+ggsave("../figures/month_rate_cod.png", height = 4, width = 7, scale = 1.3)
+```
+
+
 
 # Models
 
@@ -593,7 +632,7 @@ pl_d <- d3 %>%
   mutate(cause = str_extract(name, "^[law]"), name = str_extract(name, "(r|ci_l|ci_h)$")) %>% 
   pivot_wider(names_from = name, values_from = value) %>% 
   mutate(
-    cause = factor(cause, levels = c("l", "a", "w"), labels = c("All-cause", "Airborne", "Waterborne"))
+    cause = factor(cause, levels = c("l", "a", "w"), labels = c("All-cause", "AID", "WFID"))
   ) 
 ggplot(pl_d, aes(med_t, r)) + 
   geom_point() + 
@@ -1062,11 +1101,11 @@ ggplot(r4 %>% filter(predvar %in% c(-25, 25), lag > -1), aes(lag, rr)) + geom_hl
 
 ```{r}
 ra1 <- bind_rows(
-  r2_14 %>% mutate(outcome = "Air"),
-  r3_14 %>% mutate(outcome = "Water"), 
+  r2_14 %>% mutate(outcome = "AID"),
+  r3_14 %>% mutate(outcome = "WFID"), 
   r4_14 %>% mutate(outcome = "Other")
 ) %>% 
-  mutate(outcome = factor(outcome, levels = c("Water", "Air", "Other")) %>% fct_rev) 
+  mutate(outcome = factor(outcome, levels = c("WFID", "AID", "Other")) %>% fct_rev) 
 
 ```
 
@@ -1092,11 +1131,11 @@ ggsave("../figures/temp-cause-all.png", height = 3.3, width = 7)
 
 
 ra1_a <- bind_rows(
-  r2 %>% mutate(outcome = "Air"),
-  r3 %>% mutate(outcome = "Water"), 
+  r2 %>% mutate(outcome = "AID"),
+  r3 %>% mutate(outcome = "WFID"), 
   r4 %>% mutate(outcome = "Other")
 ) %>% 
-  mutate(outcome = factor(outcome, levels = c("Water", "Air", "Other")) %>% fct_rev) 
+  mutate(outcome = factor(outcome, levels = c("WFID", "AID", "Other")) %>% fct_rev) 
 
 
 ra1_a %>% filter(predvar %in% c(-20,20), lag > -1) %>% 
