@@ -363,7 +363,7 @@ temp_exps <- d4 %>% select(temp1:temp14) %>% as.matrix
 ```{r}
 d4 %>% filter(age_g == "(31,367]") %>% 
   # mutate(day = row_number()) %>% 
-  select(datee, temp1:temp9) %>% 
+  select(datee, temp1:temp9) %>:% 
   slice(1:10) %>% 
   mutate_if(is.numeric, round, 3) %>% 
   flextable() %>% autofit()

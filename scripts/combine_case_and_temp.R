@@ -91,6 +91,26 @@ temp_harno <- h0 %>%
     temp18 = lag(temp, 18),
     temp19 = lag(temp, 19),
     temp20 = lag(temp, 20),
+    placebo_temp1 = lead(temp, 1+60),
+    placebo_temp2 = lead(temp, 2+60),
+    placebo_temp3 = lead(temp, 3+60),
+    placebo_temp4 = lead(temp, 4+60),
+    placebo_temp5 = lead(temp, 5+60),
+    placebo_temp6 = lead(temp, 6+60),
+    placebo_temp7 = lead(temp, 7+60),
+    placebo_temp8 = lead(temp, 8+60),
+    placebo_temp9 = lead(temp, 9+60),
+    placebo_temp10 = lead(temp, 10+60),
+    placebo_temp11 = lead(temp, 11+60),
+    placebo_temp12 = lead(temp, 12+60),
+    placebo_temp13 = lead(temp, 13+60),
+    placebo_temp14 = lead(temp, 14+60),
+    placebo_temp15 = lead(temp, 15+60),
+    placebo_temp16 = lead(temp, 16+60),
+    placebo_temp17 = lead(temp, 17+60),
+    placebo_temp18 = lead(temp, 18+60),
+    placebo_temp19 = lead(temp, 19+60),
+    placebo_temp20 = lead(temp, 20+60),
     lag_temp = rol_avg(temp1, 7)
   ) 
 
@@ -104,7 +124,7 @@ load("data/case_data.rda")
 
 temp_case_data <- left_join(
   case_data, 
-  temp_harno %>% select(date, temp, temp1:temp14, lag_temp), 
+  temp_harno %>% select(date, temp, temp1:temp20, placebo_temp1:placebo_temp20, lag_temp), 
   by = c("datee" = "date")
 ) %>% 
   filter(!is.na(temp)) %>% 

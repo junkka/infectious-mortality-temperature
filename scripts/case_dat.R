@@ -32,6 +32,30 @@ ggsave("figures/cause-hist.png", height = 8, width = 8)
 
 # -------------------
 
+p_d <- indiv_data %>% 
+  mutate(
+    urban = ifelse(fodhemfrsnmn == "SUNDSVALL", "Urban", "Rural"),
+    unknown = ((is.na(infantcat) | infantcat %in% c("stated to be 'unknown'", "no cause given/blank")) & event == 1),
+    other = event - water - air - unknown
+  ) %>% 
+  filter(water | air | unknown | event == 1 | other == 1) %>% select(water, air, unknown, durr_d, event, other, urban) %>% 
+  pivot_longer(cols = c(water, air, unknown, event, other)) %>% filter(value == 1) %>% 
+  filter(name != "event") %>% 
+  mutate(
+    name = factor(name, levels = c("water", "air", "other", "unknown"), labels = c("WFID", "AID", "Other", "Unknown"))
+  ) %>% 
+  group_by(urban, name) %>% 
+  summarise(durrs = sum(durr_d), n = n()) %>% 
+  mutate(p = n /sum(n)) #%>% 
+
+ggplot(p_d, aes(urban, n, group = name, fill = name)) + geom_col(position = position_stack()) +
+  scale_fill_viridis_d() +
+  coord_flip() +
+  theme_classic() + 
+  labs(x = NULL, y = "Deaths", fill = NULL)
+
+ggsave("figures/death_counts.png", height = 4, width = 8)
+# -------------
 
 indxx <- tibble(
   datee = seq(ymd("18600101"), ymd("18930101"), "day"),

@@ -7,7 +7,7 @@ library(tidyverse)
 
 
 conn <- db2connect::db2_connect(db_name = "POPUM")
-)
+
 
 
 links2 <- tbl(conn, in_schema("U21002", "RELIGION")) %>% collect()

@@ -71,23 +71,23 @@ h0 <- temp_harno
 
 
 ```{r, fig.width=8, fig.height=4}
-harno %>%
-  # slice(1:10) %>% 
-  filter(date < "1893-01-01") %>% 
-  mutate(
-    dt = lubridate::ymd_hms(paste(date, time)),
-  ) %>% 
-  group_by(time) %>% 
-  mutate(
-    temp2 = zoo::rollmean(app, 7, fill = NA, align = "center")
-  ) %>% 
-  ungroup() %>% 
-  ggplot(aes(dt, app)) + 
-  geom_line(size = .2) +
-  geom_smooth(method = lm, se = F) + 
-  labs(x = "Time", y = "Temperature") 
+# harno %>%
+#   # slice(1:10) %>% 
+#   filter(date < "1893-01-01") %>% 
+#   mutate(
+#     dt = lubridate::ymd_hms(paste(date, time)),
+#   ) %>% 
+#   group_by(time) %>% 
+#   mutate(
+#     temp2 = zoo::rollmean(app, 7, fill = NA, align = "center")
+#   ) %>% 
+#   ungroup() %>% 
+#   ggplot(aes(dt, temp2)) + 
+#   geom_line(size = .2) +
+#   geom_smooth(method = lm, se = F) + 
+#   labs(x = "Time", y = "Temperature") 
 
-ggsave("../figures/temperature-time.png", height = 4, width = 8)
+# ggsave("../figures/temperature-time.png", height = 4, width = 8)
 ```
 
 ```{r}
@@ -164,6 +164,22 @@ ggsave("../figures/month_temp_polar.png", height = 5, width = 5)
 
 ```
 
+```{r}
+ha1 <- harno %>% 
+  mutate(
+    t = case_when(
+      as.character(time) %in% c("06:00:00", "07:00:00") ~"morning",
+      as.character(time) %in% c("12:00:00", "13:00:00") ~"day",
+      as.character(time) %in% c("18:00:00", "20:00:00") ~"evening",
+    )
+  ) 
+
+ha1 %>% complete(t, date) %>% 
+  arrange(date) %>% 
+  filter(is.na(temperature))
+  
+```
+
 
 
 ```{r}
@@ -173,7 +189,7 @@ rol_avg <- function(x, k, a = "right") zoo::rollmean(x, k = k, fill = NA, align 
 h1 <- h0 %>% 
   group_by(date) %>% 
   summarise(
-    temp = mean(app, na.rm = T)
+    temp = mean(temp, na.rm = T)
 
   ) %>% 
   ungroup() %>% 
@@ -597,7 +613,7 @@ d3 %>%
 
 
 ```{r}
-expos <- d3 %>% select(temp1:temp14) %>% as.matrix() %>% as.vector() %>% na.omit()
+expos <- d3 %>% select(temp1:temp20) %>% as.matrix() %>% as.vector() %>% na.omit()
 
 pl_d <- d3 %>% 
   filter(!is.na(temp1)) %>% 
@@ -698,10 +714,10 @@ Create the tempearture exposure matrix
 ```{r}
 
 d4 <- d3 %>% 
-  filter(!is.na(temp14)) 
+  filter(!is.na(temp20)) 
 
 
-temp_exps <- d4 %>% select(temp1:temp14) %>% as.matrix
+temp_exps <- d4 %>% select(temp1:temp20) %>% as.matrix
 
 ```
 
@@ -721,9 +737,9 @@ exposures <- temp_exps
 
 crb2 <- crossbasis(
   exposures, 
-  lag = 13, 
+  lag = 19, 
   argvar =  list(fun = "ns", df = 3) ,
-  arglag = list(fun = "ns", knots = logknots(1:13, df = 4))
+  arglag = list(fun = "ns", knots = logknots(1:19, df = 4))
 )
 
 
@@ -745,9 +761,9 @@ pred_fun_lag_non <- function(x, exp, cent= NULL, min_temp = NULL, max_temp = NUL
   exposures <- exp
   crb2 <- crossbasis(
     exposures, 
-    lag = 13, 
+    lag = 19, 
     argvar =  list(fun= "ns", df = 3),
-    arglag = list(fun = "ns", knots = logknots(1:13, df = 4))
+    arglag = list(fun = "ns", knots = logknots(1:19, df = 4))
   ) 
   
   
@@ -790,9 +806,9 @@ pred_fun_lag <- function(x, exp, cent= NULL, min_temp = NULL, max_temp = NULL){
   exposures <- exp
   crb2 <- crossbasis(
     exposures, 
-    lag = 13, 
+    lag = 19, 
     argvar =  list(fun = "thr", side = "d", thr.value =cent) ,
-    arglag = list(fun = "ns", knots = logknots(1:13, df = 4))
+    arglag = list(fun = "ns", knots = logknots(1:19, df = 4))
   ) 
   
   fit4 <- glm(dead~  offset(log(pop)) + crb2+ ns(y, df = 3) + ns(dy, df = 3), data = x,
@@ -1142,7 +1158,7 @@ ra1_a %>% filter(predvar %in% c(-20,20), lag > -1) %>%
   ggplot(aes(lag +1, rr)) + geom_hline(yintercept = 1) +
   geom_line(color = "#0F5298") +
   geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298", color = NA) +
-  scale_x_continuous(breaks = seq(1,14, 2)) +
+  scale_x_continuous(breaks = seq(1,20, 2)) +
   scale_y_log10(breaks = c(.64,.8,1,1.2,1.44,1.73, 2.1)) +
   theme_classic() +
   facet_grid(predvar~outcome) +
@@ -1507,4 +1523,198 @@ bind_rows(
   flextable()
 ```
 
+# placebo test
+
+```{r}
+
+d4_p <- d3 %>% filter(!is.na(placebo_temp20))
+
+temp_exps_p <- d4_p %>% select(placebo_temp1:placebo_temp20) %>% as.matrix
+```
+
+```{r}
+
+temp_d <- d4_p$lag_temp[d4_p$dead > 0]
+  
+min_temp <- ceiling(min(pmin(temp_d), na.rm =T))
+max_temp <- floor(max(pmax(temp_d), na.rm =T))
+
+
+r0_p <- pred_fun_lag_non(d4_p, temp_exps_p, cent = 5, min_temp = min_temp, max_temp = max_temp)
+
+
+ggplot(r0_p %>% filter(lag == -1), aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line(color = "#0F5298") +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298") +
+  scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  # scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_thesis() +
+  # facet_wrap(~lag) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+```
+
+
+```{r}
+
+# Airborne
+
+
+temp_d <- d4_p$lag_temp[d4_p$air > 0]
+  
+min_temp <- ceiling(min(pmin(temp_d), na.rm=T))
+max_temp <- floor(max(pmax(temp_d), na.rm=T))
+
+
+r2_14_p <- pred_fun_lag(d4_p %>% mutate(dead = air), temp_exps_p, cent = 5, min_temp = min_temp, max_temp = max_temp)
+
+r2_p <- pred_fun_lag(d4_p %>% mutate(dead = air), temp_exps_p, cent = 5)
+
+
+
+
+ggplot(r2_14_p %>% filter(lag == -1), aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line() +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, color = NA) + 
+  scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  facet_wrap(~lag) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+```
+
+```{r}
+
+# Water and foodborne
+
+temp_d <- d4_p$lag_temp[d4_p$water > 0]
+  
+min_temp <- ceiling(min(pmin(temp_d), na.rm = T))
+max_temp <- floor(max(pmax(temp_d), na.rm = T))
+
+
+r3_14_p <- pred_fun_lag(d4_p %>% mutate(dead = water), temp_exps_p, cent = 5, min_temp = min_temp, max_temp = max_temp)
+r3_p <- pred_fun_lag(d4_p %>% mutate(dead = water), temp_exps_p, cent = 5)
+
+
+ggplot(r3_14_p %>% filter(lag == -1), aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line() +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, color = NA) + 
+  scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  # facet_wrap(~lag) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+```
+
+
+
+
+```{r}
+
+# Other
+
+d4_p <- d4_p %>% mutate(other = dead - water - air)
+
+temp_d <- d4_p$lag_temp[d4_p$other > 0]
+  
+min_temp <- ceiling(min(pmin(temp_d), na.rm = T))
+max_temp <- floor(max(pmax(temp_d), na.rm = T))
+
+
+r4_14_p <- pred_fun_lag(d4_p %>% mutate(dead = dead - water - air), temp_exps_p, cent = 5, min_temp = min_temp, max_temp = max_temp)
+
+r4_p <- pred_fun_lag(d4_p %>% mutate(dead = dead - water - air), temp_exps_p, cent = 5)
+
+
+ggplot(r4_14_p %>% filter(lag == -1), aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line() +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, color = NA) + 
+  scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_classic() +
+  # facet_wrap(~lag) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+```
+
+
+```{r}
+ra1_p <- bind_rows(
+  r2_14_p %>% mutate(outcome = "AID"),
+  r3_14_p %>% mutate(outcome = "WFID"), 
+  r4_14_p %>% mutate(outcome = "Other")
+) %>% 
+  mutate(outcome = factor(outcome, levels = c("WFID", "AID", "Other")) %>% fct_rev) 
+
+```
+
+```{r}
+ra1_p %>% 
+  filter(lag == -1) %>% 
+  ggplot(aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line(color = "#0F5298") +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298", color = NA) + 
+  scale_x_continuous(breaks = seq(-40, +25, 10)) + 
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16),limits = c(0.2, 9)) +
+  theme_classic() +
+  facet_wrap(~outcome) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+
+ggsave("../figures/placebo-temp-cause-all.png", height = 3.3, width = 7)
+```
+
+
+
+```{r}
+
+
+ra1_a_p <- bind_rows(
+  r2_p %>% mutate(outcome = "AID"),
+  r3_p %>% mutate(outcome = "WFID"), 
+  r4_p %>% mutate(outcome = "Other")
+) %>% 
+  mutate(outcome = factor(outcome, levels = c("WFID", "AID", "Other")) %>% fct_rev) 
+
+
+ra1_a_p %>% filter(predvar %in% c(-20,20), lag > -1) %>% 
+  ggplot(aes(lag +1, rr)) + geom_hline(yintercept = 1) +
+  geom_line(color = "#0F5298") +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298", color = NA) +
+  scale_x_continuous(breaks = seq(1,14, 2)) +
+  scale_y_log10(breaks = c(.64,.8,1,1.2,1.44,1.73, 2.1)) +
+  theme_classic() +
+  facet_grid(predvar~outcome) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Lag time", y = "IRR")
+
+# ggsave("../figures/temp-cause-lag.png", height = 5, width = 7)
+  
+```
+
+```{r}
+r0a_p <- pred_fun_lag_non(d4_p %>% mutate(dead = air), temp_exps_p, cent = 7)
+r0w_p <- pred_fun_lag_non(d4_p %>% mutate(dead = water), temp_exps_p, cent = 5)
+r0o_p <- pred_fun_lag_non(d4_p %>% mutate(dead = dead - air - water), temp_exps_p, cent = 5)
+
+
+bind_rows(
+  r0w_p %>% mutate(outcome = "Water"),
+  r0a_p %>% mutate(outcome = "Air"),
+  r0o_p %>% mutate(outcome = "Other")
+) %>% 
+  filter(lag == -1, rr < 5, rr > .4) %>%
+  ggplot(aes(predvar, rr)) + geom_hline(yintercept = 1) +
+  geom_line(color = "#0F5298") +
+  geom_ribbon(aes(ymin = rr_low, ymax = rr_high), alpha = .2, fill = "#0F5298", color = NA) +
+  scale_x_continuous(breaks = seq(-40, +25, 5)) + 
+  scale_y_log10(breaks = c(.4,.7,1,2,4,8,16)) +
+  theme_minimal() +
+  facet_wrap(~outcome) +
+  theme(panel.grid.major = element_line(color = "gray90")) +
+  labs(x = "Temperature", y = "IRR")
+```
 
