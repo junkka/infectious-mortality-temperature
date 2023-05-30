@@ -9,7 +9,10 @@ load("data/indiv_data.rda")
 #' Iterate over day, sum by  age
 
 # -----------------
-
+indiv_data <- indiv_data %>% 
+  mutate(
+    urban = ifelse(mbofrsnmn == "SUNDSVALL", T, F)
+  )
 
 indiv_data %>% 
   mutate(
@@ -85,7 +88,7 @@ res <- parallel::mclapply(indxx$datee, mc.cores = number_of_cores, function(x, d
     ) %>% 
     # filter(age >= 14) %>% 
     mutate(age_g = cut(age, c(0, 14,31,367), include.lowest = T)) %>% 
-    count(age_g) %>% 
+    count(age_g, urban) %>% 
     mutate(datee = x)
   
   # nrow()
@@ -104,7 +107,7 @@ res3 <- indiv_data %>%
     age = diff_days(bdate, ddate),
     age_g = cut(age, c(0, 14,31,367), include.lowest = T)
   ) %>%  
-  group_by(ddate, age_g) %>% 
+  group_by(ddate, age_g, urban) %>% 
   summarise(dead = n())
 
 
@@ -115,7 +118,7 @@ res3a <- indiv_data %>%
     age = diff_days(bdate, ddate),
     age_g = cut(age, c(0, 14,31,367), include.lowest = T)
   ) %>% 
-  group_by(ddate, age_g) %>% 
+  group_by(ddate, age_g, urban) %>% 
   summarise(air = n())
 
 res3w <- indiv_data %>% 
@@ -124,7 +127,7 @@ res3w <- indiv_data %>%
     age = diff_days(bdate, ddate),
     age_g = cut(age, c(0, 14,31,367), include.lowest = T)
   ) %>% 
-  group_by(ddate, age_g) %>% 
+  group_by(ddate, age_g, urban) %>% 
   summarise(water = n())
 
 res3u <- c_2 %>% 
@@ -133,16 +136,16 @@ res3u <- c_2 %>%
     age = diff_days(bdate, ddate),
     age_g = cut(age, c(0, 14,31,367), include.lowest = T)
   ) %>% 
-  group_by(ddate, age_g) %>% 
+  group_by(ddate, age_g, urban) %>% 
   summarise(unknown = n(), .groups = "drop")
 
 
 
 res5 <- indxx %>% 
-  left_join(res3, by = c("datee"= "ddate", "age_g")) %>% 
-  left_join(res3a, by = c("datee"= "ddate", "age_g")) %>% 
-  left_join(res3w, by = c("datee"= "ddate", "age_g")) %>% 
-  left_join(res3u, by = c("datee"= "ddate", "age_g")) %>% 
+  left_join(res3, by = c("datee"= "ddate", "age_g", "urban")) %>% 
+  left_join(res3a, by = c("datee"= "ddate", "age_g", "urban")) %>% 
+  left_join(res3w, by = c("datee"= "ddate", "age_g", "urban")) %>% 
+  left_join(res3u, by = c("datee"= "ddate", "age_g", "urban")) %>% 
   replace_na(list(dead = 0, air = 0, water = 0, unknown = 0)) %>% 
   mutate(
     month = month(datee),
@@ -150,6 +153,6 @@ res5 <- indxx %>%
     st    = paste(y, month, sep = ".")
   )
 
-case_data <- res5 %>% select(datee, y, dy, month, wday, age_g, n, dead, air, water, unknown)
+case_data <- res5 %>% select(datee, y, dy, month, wday, age_g, urban, n, dead, air, water, unknown)
 
 save(case_data, file = "data/case_data.rda", compress = "xz")

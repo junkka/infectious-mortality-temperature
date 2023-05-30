@@ -714,10 +714,10 @@ Create the tempearture exposure matrix
 ```{r}
 
 d4 <- d3 %>% 
-  filter(!is.na(temp20)) 
+  filter(!is.na(temp14)) 
 
 
-temp_exps <- d4 %>% select(temp1:temp20) %>% as.matrix
+temp_exps <- d4 %>% select(temp1:temp14) %>% as.matrix
 
 ```
 
@@ -737,9 +737,9 @@ exposures <- temp_exps
 
 crb2 <- crossbasis(
   exposures, 
-  lag = 19, 
+  lag = 13, 
   argvar =  list(fun = "ns", df = 3) ,
-  arglag = list(fun = "ns", knots = logknots(1:19, df = 4))
+  arglag = list(fun = "ns", knots = logknots(1:13, df = 4))
 )
 
 
@@ -761,16 +761,17 @@ pred_fun_lag_non <- function(x, exp, cent= NULL, min_temp = NULL, max_temp = NUL
   exposures <- exp
   crb2 <- crossbasis(
     exposures, 
-    lag = 19, 
+    lag = 13, 
     argvar =  list(fun= "ns", df = 3),
-    arglag = list(fun = "ns", knots = logknots(1:19, df = 4))
+    arglag = list(fun = "ns", knots = logknots(1:13, df = 4))
   ) 
   
   
   # f
-  fit4 <- glm(dead~  offset(log(pop)) + crb2+ ns(y, df = 3) + ns(dy, df = 3), data = x,
+  fit4 <- glm(dead~  offset(log(pop)) + crb2+ ns(y, df = 3) + ns(dy, df = 3) + age_g + urban, data = x,
               family = "poisson")
-
+  
+  summary(fit4)
   
   temp_d <- exp[x$dead > 0]
   
@@ -806,12 +807,12 @@ pred_fun_lag <- function(x, exp, cent= NULL, min_temp = NULL, max_temp = NULL){
   exposures <- exp
   crb2 <- crossbasis(
     exposures, 
-    lag = 19, 
+    lag = 13, 
     argvar =  list(fun = "thr", side = "d", thr.value =cent) ,
-    arglag = list(fun = "ns", knots = logknots(1:19, df = 4))
+    arglag = list(fun = "ns", knots = logknots(1:13, df = 4))
   ) 
   
-  fit4 <- glm(dead~  offset(log(pop)) + crb2+ ns(y, df = 3) + ns(dy, df = 3), data = x,
+  fit4 <- glm(dead~  offset(log(pop)) + crb2+ ns(y, df = 3) + ns(dy, df = 3)  + age_g + urban, data = x,
               family = "poisson")
   
   
@@ -839,6 +840,8 @@ pred_fun_lag <- function(x, exp, cent= NULL, min_temp = NULL, max_temp = NULL){
 }
 
 ```
+
+## Model results
 
 Overall association between temperature and IM. `lag = -1` is the total effect given exposure in the past 14 days
 
@@ -1138,7 +1141,7 @@ ra1 %>%
   theme(panel.grid.major = element_line(color = "gray90")) +
   labs(x = "Temperature", y = "IRR")
 
-ggsave("../figures/temp-cause-all.png", height = 3.3, width = 7)
+ggsave("../figures/urban-temp-cause-all.png", height = 3.3, width = 7)
 ```
 
 
@@ -1192,7 +1195,14 @@ perc_g <- d4 %>%
   pivot_longer(
     -name, names_to = "perc"
   ) %>% 
-  mutate(predvar = round(value), name = str_to_title(name))
+  mutate(predvar = round(value), name = str_to_title(name)) %>% 
+  mutate(
+    name = factor(
+      name,
+      levels = c("Air", "Dead", "Other", "Water"),
+      labels = c("AID", "Dead", "Other", "WFID")
+    )
+  )
   
 
 
@@ -1208,7 +1218,7 @@ ra1 %>%
   select(outcome, perc, predvar, rr, rr_low, rr_high) %>%
   mutate(across(starts_with("rr"), ~round(., 2))) %>% 
   mutate(
-    outcome = factor(outcome, levels = c("Other", "Air", "Water"), labels = c("Other", "AID", "WFID")),
+    # outcome = factor(outcome, levels = c("Other", "Air", "Water"), labels = c("Other", "AID", "WFID")),
     predvar = ifelse(predvar > 0, sprintf("+%s", predvar), as.character(predvar))
   ) %>% 
   set_names(c("Cause", "Percentile", "Temperature", "RR", "CI low", "CI high")) %>% 
@@ -1242,13 +1252,14 @@ round(perc)
 
 
 ```{r}
-ra1 %>% filter(predvar %in% c(-20, 20), lag > -1) %>% 
+ra1_a %>% filter(predvar %in% c(-20, 20), lag > -1) %>% 
   arrange(outcome, predvar, lag) %>% 
   # mutate(across(starts_with("rr"), ~round(., 3))) %>% 
-  mutate(cis = sprintf("%.3f - %.3f", rr_low, rr_high), rr = round(rr, 3)) %>% select(predvar, lag, outcome, rr, cis) %>% 
+  mutate(cis = sprintf("%.2f - %.2f", rr_low, rr_high), rr = round(rr, 2)) %>% select(predvar, lag, outcome, rr, cis) %>% 
   pivot_wider(names_from = outcome, values_from = c(rr, cis)) %>% 
   select(c(1,2,3,6,4,7,5,8)) %>% 
   flextable() %>% 
+  merge_v(1) %>% 
   autofit()
 ```
 
@@ -1292,7 +1303,7 @@ season_fun <- function(x, exp, cent= NULL){
   ) 
   
 
-  fit4 <- glm(dead~ offset(log(pop)) + age_g + crb2, data = x,
+  fit4 <- glm(dead~ offset(log(pop)) + age_g + crb2 + age_g + urban, data = x,
               family = "poisson")
   
   
@@ -1326,7 +1337,7 @@ season_fun_temp <- function(x, exp, cent= NULL){
   
   
  
-  fit4 <- glm(dead~ ns(y, df = 3) + ns(lag_temp, df = 3) + age_g + ns(temp, df = 3) + offset(log(pop)) + crb2, data = x,
+  fit4 <- glm(dead~ ns(y, df = 3) + ns(lag_temp, df = 3) + age_g + ns(temp, df = 3) + offset(log(pop)) + crb2 + age_g + urban, data = x,
               family = "poisson")
   
   
@@ -1520,14 +1531,27 @@ bind_rows(
 ) %>% 
   left_join(distinct(t_brks), by = c("predvar" = "start_d")) %>% 
   filter(!is.na(month_n)) %>% 
+  select(month_n, )
   flextable()
 ```
+
+
+```{r}
+res1 %>%  left_join(distinct(t_brks), by = c("predvar" = "start_d")) %>% filter(!is.na(month), out != "all") %>% 
+  mutate(cis = sprintf("%.3f - %.3f", rr_low, rr_high), rr = round(rr, 3)) %>% 
+  select(month_n, out, rr, cis) %>% 
+  pivot_wider(names_from = out, values_from = c(rr, cis)) %>% 
+  select(c(1, 2,5,3,6,4,7)) %>% 
+  flextable()
+  
+```
+
 
 # placebo test
 
 ```{r}
 
-d4_p <- d3 %>% filter(!is.na(placebo_temp20))
+d4_p <- d3 %>% filter(!is.na(placebo_temp14))
 
 temp_exps_p <- d4_p %>% select(placebo_temp1:placebo_temp20) %>% as.matrix
 ```
@@ -1716,5 +1740,25 @@ bind_rows(
   facet_wrap(~outcome) +
   theme(panel.grid.major = element_line(color = "gray90")) +
   labs(x = "Temperature", y = "IRR")
+```
+
+# Model comparison
+
+```{r}
+exposures <- temp_exps
+  crb2 <- crossbasis(
+    exposures, 
+    lag = 13, 
+    argvar =  list(fun = "thr", side = "d", thr.value =5) ,
+    arglag = list(fun = "ns", knots = logknots(1:13, df = 4))
+  ) 
+  
+fit4 <- glm(dead~  offset(log(pop)) + crb2+ ns(y, df = 3) + ns(dy, df = 3) + age_g + urban, data = d4,
+              family = "poisson")
+fit5 <- glm(dead~  offset(log(pop)) + crb2+ ns(y, df = 3) + ns(dy, df = 3) + age_g, data = d4,
+              family = "poisson")
+
+AIC(fit5, fit4)
+anova(fit5, fit4, test = "Chisq")
 ```
 
